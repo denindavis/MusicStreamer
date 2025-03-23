@@ -79,15 +79,15 @@ document.addEventListener("DOMContentLoaded", () => {
         bufferedBar.style.width = `${bufferedPercentage}%`;
     
         // Log buffering progress
-        console.log(`Buffering Progress: ${bufferedPercentage.toFixed(2)}%`);
-        console.log(`Buffered: ${bufferedEnd.toFixed(2)}s of ${audioPlayer.duration.toFixed(2)}s`);
-        console.log(`Ready State: ${audioPlayer.readyState}`); // 4 = HAVE_ENOUGH_DATA
+        // console.log(`Buffering Progress: ${bufferedPercentage.toFixed(2)}%`);
+        // console.log(`Buffered: ${bufferedEnd.toFixed(2)}s of ${audioPlayer.duration.toFixed(2)}s`);
+        // console.log(`Ready State: ${audioPlayer.readyState}`); // 4 = HAVE_ENOUGH_DATA
     
         // Check if buffering is complete
-        isBufferingComplete = bufferedEnd >= audioPlayer.duration - 0.1;
-        if (isBufferingComplete) {
-            console.log("Buffering completed!");
-        }
+        // isBufferingComplete = bufferedEnd >= audioPlayer.duration - 0.1;
+        // if (isBufferingComplete) {
+        //     console.log("Buffering completed!");
+        // }
     }
 
     // Fetch the playlist and metadata from the server
@@ -763,3 +763,4 @@ document.addEventListener("DOMContentLoaded", () => {
         blobUrls = [];
     });
 });
+
