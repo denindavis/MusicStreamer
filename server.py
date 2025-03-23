@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import socket  # [CHANGE 1]: Added import for socket module
 
 # List of required libraries
 REQUIRED_LIBRARIES = ["mutagen"]
@@ -35,6 +36,13 @@ MP3_DIR = os.getcwd()
 print(f"MP3_DIR is set to: {MP3_DIR}")
 
 class CustomHandler(http.server.SimpleHTTPRequestHandler):
+    def handle(self):
+        """Handle requests and catch BrokenPipeError."""
+        try:
+            super().handle()
+        except BrokenPipeError:
+            print("BrokenPipeError: Client disconnected unexpectedly. Skipping this request.")
+
     def translate_path(self, path):
         """Serve files from the app directory or parent directory for .mp3 files."""
         path = super().translate_path(path)
@@ -100,6 +108,31 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
         print(f"Detected audio files: {metadata}")  # Debugging log
         return json.dumps(metadata)
 
+# [CHANGE 2]: Added function to get the local IP address
+def get_local_ip():
+    """Get the local IP address of the machine."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))  # Use Google's DNS server as a target
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception as e:
+        print(f"Could not determine local IP: {e}")
+        return "localhost"  # Fallback to localhost if IP can't be determined
+
+# [CHANGE 3]: Updated server startup to print IP and port
 httpd = socketserver.TCPServer(("", PORT), CustomHandler)
-print(f"Serving at port {PORT}")
-httpd.serve_forever()
+local_ip = get_local_ip()
+print(f"Serving at http://{local_ip}:{PORT}")  # Changed from "Serving at port {PORT}"
+try:
+    httpd.serve_forever()
+except BrokenPipeError:
+    print("BrokenPipeError: Client disconnected unexpectedly.")
+except KeyboardInterrupt:
+    print("\nServer stopped by user.")
+except Exception as e:
+    print(f"Unexpected error: {e}")
+finally:
+    httpd.server_close()
+    print("Server closed.")
