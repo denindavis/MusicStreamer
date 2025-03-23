@@ -92,6 +92,15 @@ body {
     overflow: hidden;
 }
 
+.buffered {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background-color: #a0a0a0; /* Dark grey for buffered portions */
+    z-index: 1;
+}
+
 .progress-bar .progress {
     height: 100%;
     background: var(--primary-color);
@@ -113,6 +122,29 @@ body {
     opacity: 0;
     transition: opacity 0.2s;
 }
+
+    .progress-bar {
+        position: relative;
+        width: 100%;
+        height: 5px;
+        background: #ddd;
+        cursor: pointer;
+    }
+
+    .buffered {
+        position: absolute;
+        height: 100%;
+        background: #aaa;
+        z-index: 1;
+    }
+
+    .progress {
+        position: absolute;
+        height: 100%;
+        background: #007bff;
+        z-index: 2;
+    }
+
 
 .progress-bar:hover .progress::after {
     opacity: 1;
