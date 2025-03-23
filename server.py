@@ -27,7 +27,7 @@ import http.server
 import socketserver
 import mimetypes
 import json
-from mutagen.mp3 import MP3
+from mutagen import File as MutagenFile
 
 PORT = 8000
 
@@ -80,7 +80,10 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
             if (name.endswith(".mp3") or name.endswith(".m4a")) and os.path.isfile(os.path.join(MP3_DIR, name)):
                 file_path = os.path.join(MP3_DIR, name)
                 try:
-                    audio = MP3(file_path)  # Mutagen can handle .m4a files as well
+                    audio = MutagenFile(file_path)  # Mutagen can handle .m4a files as well
+                    if audio is None:
+                        raise ValueError("Unsupported file format")
+
                     metadata.append({
                         "name": name,
                         "duration": audio.info.length,  # Duration in seconds
