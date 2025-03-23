@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <span class="time-remaining"></span>
             </div>
             <div class="progress-bar">
+                <div class="buffered"></div>
                 <div class="progress"></div>
             </div>
             <div class="error-message"></div>
@@ -44,12 +45,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const playlistUl = document.getElementById("playlist-ul");
     const progressBar = document.querySelector(".progress-bar");
     const progress = document.querySelector(".progress");
+    const bufferedBar = document.querySelector(".buffered");
     const sliderImg = document.querySelector(".slider img");
     const timeRemaining = document.querySelector(".time-remaining");
     const soundBars = document.querySelector(".sound-bars");
     const volumeBtn = document.querySelector('.volume-btn');
     const volumeSlider = document.querySelector('.volume-slider');
     const volumeControl = document.querySelector('.volume-control');
+
+    let isBufferingComplete = false;
 
     let playlist = [];
     let currentIndex = 0;
@@ -60,6 +64,31 @@ document.addEventListener("DOMContentLoaded", () => {
     let analyser = null;
     let audioSource = null;
     let dataArray = null;
+    const maxFilesInMemory = 3;
+    let blobUrls = [];
+
+
+    function updateBuffered() {
+        if (!audioPlayer.buffered || audioPlayer.buffered.length === 0 || isNaN(audioPlayer.duration)) {
+            console.log("Buffering info not available yet");
+            return;
+        }
+    
+        const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+        const bufferedPercentage = (bufferedEnd / audioPlayer.duration) * 100;
+        bufferedBar.style.width = `${bufferedPercentage}%`;
+    
+        // Log buffering progress
+        console.log(`Buffering Progress: ${bufferedPercentage.toFixed(2)}%`);
+        console.log(`Buffered: ${bufferedEnd.toFixed(2)}s of ${audioPlayer.duration.toFixed(2)}s`);
+        console.log(`Ready State: ${audioPlayer.readyState}`); // 4 = HAVE_ENOUGH_DATA
+    
+        // Check if buffering is complete
+        isBufferingComplete = bufferedEnd >= audioPlayer.duration - 0.1;
+        if (isBufferingComplete) {
+            console.log("Buffering completed!");
+        }
+    }
 
     // Fetch the playlist and metadata from the server
     fetch("/list")
@@ -181,22 +210,53 @@ document.addEventListener("DOMContentLoaded", () => {
         if (playlist.length === 0) return;
         
         try {
+            // Remove oldest blob URL if we're at the limit
+            if (blobUrls.length >= maxFilesInMemory) {
+                const oldestUrl = blobUrls.shift();
+                URL.revokeObjectURL(oldestUrl);
+                console.log("Revoked oldest blob URL:", oldestUrl);
+            }
+    
             // Reset the audio player
             audioPlayer.removeAttribute('src');
             audioPlayer.load();
-            
-            // Stop current playback and reset state
             audioPlayer.pause();
             audioPlayer.currentTime = 0;
             progress.style.width = '0%';
+            isBufferingComplete = false;
             
             const track = playlist[currentIndex];
             
-            // Set up new audio
+            // Fetch the entire audio file
+            console.log(`Fetching full audio file: ${track.name}`);
+            const response = await fetch(track.name, { method: 'GET' });
+            if (!response.ok) throw new Error(`Failed to fetch audio: ${response.status}`);
+            
+            const blob = await response.blob();
+            const audioUrl = URL.createObjectURL(blob);
+            
+            // Only add if not already in the array (avoid duplicates)
+            if (!blobUrls.includes(audioUrl)) {
+                blobUrls.push(audioUrl);
+            }
+            audioPlayer.src = audioUrl;
             audioPlayer.preload = "auto";
-            audioPlayer.src = track.name;
             audioPlayer.load();
-
+    
+            // Continuously monitor and update buffering
+            const bufferCheck = setInterval(() => {
+                updateBuffered();
+                if (isBufferingComplete) {
+                    clearInterval(bufferCheck);
+                    console.log("Buffering complete");
+                    showError("Track fully loaded");
+                } else {
+                    console.log(`Network State: ${audioPlayer.networkState}`);
+                    console.log(`Current Src: ${audioPlayer.currentSrc}`);
+                    console.log(`Files in memory: ${blobUrls.length}`);
+                }
+            }, 1000); 
+    
             // Wait for metadata to load
             await new Promise((resolve, reject) => {
                 const timeoutId = setTimeout(() => reject(new Error("Loading timeout")), 10000);
@@ -206,11 +266,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         clearTimeout(timeoutId);
                         audioPlayer.removeEventListener('loadedmetadata', loadHandler);
                         audioPlayer.removeEventListener('error', errorHandler);
-                        
-                        // Show remaining time immediately after metadata loads
                         timeRemaining.textContent = `-${formatDuration(audioPlayer.duration)}`;
                         timeRemaining.style.display = "block";
-                        
                         resolve();
                     }
                 };
@@ -225,8 +282,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 audioPlayer.addEventListener('loadedmetadata', loadHandler);
                 audioPlayer.addEventListener('error', errorHandler);
             });
-
-            // Set up event listeners
+    
+            // Set up event listeners (unchanged)
             const events = ["loadedmetadata", "play", "pause", "canplay", "progress", "waiting", "playing", "ended"];
             events.forEach(event => {
                 audioPlayer.removeEventListener(event, handleMetadataLoaded);
@@ -238,8 +295,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 audioPlayer.removeEventListener(event, handlePlaying);
                 audioPlayer.removeEventListener(event, handleTrackEnd);
             });
-
-            // Add event listeners
+    
+            // Add event listeners (unchanged)
             audioPlayer.addEventListener("loadedmetadata", handleMetadataLoaded);
             audioPlayer.addEventListener("play", handlePlayEvent);
             audioPlayer.addEventListener("pause", handlePauseEvent);
@@ -248,8 +305,9 @@ document.addEventListener("DOMContentLoaded", () => {
             audioPlayer.addEventListener("waiting", handleWaiting);
             audioPlayer.addEventListener("playing", handlePlaying);
             audioPlayer.addEventListener("ended", handleTrackEnd);
-
-            // Update UI
+            audioPlayer.addEventListener("timeupdate", updateBuffered);
+    
+            // Update UI (unchanged)
             sliderImg.style.display = "none";
             soundBars.style.display = "flex";
             timeRemaining.style.display = "none";
@@ -264,6 +322,12 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Error loading track:", error);
             showError("Error loading audio");
             handleTrackEnd();
+            // If loading failed, remove the failed URL if it was added
+            if (blobUrls.length > 0 && blobUrls[blobUrls.length - 1] === audioPlayer.src) {
+                const failedUrl = blobUrls.pop();
+                URL.revokeObjectURL(failedUrl);
+                console.log("Revoked failed blob URL:", failedUrl);
+            }
         }
     }
 
@@ -319,12 +383,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function handleProgress() {
-        if (audioPlayer.buffered.length > 0) {
-            const bufferedEnd = audioPlayer.buffered.end(0);
-            const duration = audioPlayer.duration;
-            const bufferedPercent = (bufferedEnd / duration) * 100;
-            console.log(`Buffered: ${bufferedPercent.toFixed(2)}%`);
-        }
+        updateBuffered();
     }
 
     function updateActiveTrack() {
@@ -361,38 +420,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
     progressBar.addEventListener("click", async (e) => {
         if (!audioPlayer.duration) {
-            showError("Please wait for the track to load");
+            showError("Please wait for track to load");
             return;
         }
-
+    
+        if (!isBufferingComplete) {
+            showError("Please wait for track to finish buffering");
+            return;
+        }
+    
         const rect = progressBar.getBoundingClientRect();
         const offsetX = e.clientX - rect.left;
         const percentage = offsetX / rect.width;
         const newTime = percentage * audioPlayer.duration;
-
+    
         try {
-            showError("Preparing to seek...");
-            if (!audioPlayer.seekable || audioPlayer.seekable.length === 0) {
-                throw new Error("Audio is not seekable at this time");
-            }
-
-            const seekableEnd = audioPlayer.seekable.end(0);
-            if (newTime > seekableEnd) {
-                throw new Error("That position is not loaded yet");
-            }
-
+            showError("Seeking...");
             audioPlayer.currentTime = newTime;
             progress.style.width = `${percentage * 100}%`;
             
             if (audioPlayer.paused) {
                 await audioPlayer.play();
             }
-
         } catch (error) {
             console.error("Error while seeking:", error);
-            showError(error.message || "Unable to seek to that position");
-
-            // Reset progress bar to the current time
+            showError("Unable to seek");
             const currentPercentage = (audioPlayer.currentTime / audioPlayer.duration) * 100;
             progress.style.width = `${currentPercentage}%`;
         }
@@ -424,9 +476,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const currentTime = Date.now();
             if (currentTime - lastLogTime >= 3000) {
-                console.log(`Current time: ${audioPlayer.currentTime}`);
-                console.log(`Duration: ${audioPlayer.duration}`);
-                console.log(`Progress: ${percentage}%`);
+                // console.log(`Current time: ${audioPlayer.currentTime}`);
+                // console.log(`Duration: ${audioPlayer.duration}`);
+                // console.log(`Progress: ${percentage}%`);
                 lastLogTime = currentTime;
             }
         } else {
@@ -700,5 +752,14 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Error playing previous track:", error);
             showError("Error playing previous track");
         }
+    });
+
+
+    window.addEventListener('unload', () => {
+        blobUrls.forEach(url => {
+            URL.revokeObjectURL(url);
+            console.log("Cleaned up blob URL on page unload:", url);
+        });
+        blobUrls = [];
     });
 });
