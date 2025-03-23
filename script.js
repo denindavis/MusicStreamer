@@ -63,21 +63,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Fetch the playlist and metadata from the server
     fetch("/list")
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to fetch playlist: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             playlist = data.filter(item => !item.error);
+            if (playlist.length === 0) {
+                throw new Error("No valid tracks found in the playlist.");
+            }
             populatePlaylist();
             loadTrack().then(async () => {
                 if (audioPlayer.duration) {
                     timeRemaining.textContent = `-${formatDuration(audioPlayer.duration)}`;
                     timeRemaining.style.display = "block";
-                    
+
                     // Initialize audio context for the first track
                     await initializeAudioContext();
                 }
             });
         })
-        .catch(error => console.error("Error fetching playlist:", error));
+        .catch(error => {
+            console.error("Error fetching playlist:", error);
+            showError("Failed to load playlist. Please try again later.");
+        });
 
     // Populate the playlist
     function populatePlaylist() {
@@ -252,7 +263,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (error) {
             console.error("Error loading track:", error);
             showError("Error loading audio");
-            throw error;
+            handleTrackEnd();
         }
     }
 
@@ -434,7 +445,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 lastLogTime = currentTime;
             }
         } else {
-            console.error("Cannot update progress: Metadata not available.");
+            if (!audioPlayer.dataset.errorLogged) {
+                console.error("Cannot update progress: Metadata not available.");
+                audioPlayer.dataset.errorLogged = true; // Mark the error as logged
+            }
         }
     });
 
