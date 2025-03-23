@@ -41,7 +41,7 @@ class CustomHandler(http.server.SimpleHTTPRequestHandler):
         rel_path = os.path.relpath(path, os.getcwd())
 
         # Serve .mp3 files from the parent directory
-        if rel_path.endswith(".mp3"):
+        if (rel_path.endswith(".mp3") or rel_path.endswith(".m4a")) and os.path.isfile(rel_path):
             return os.path.join(MP3_DIR, os.path.basename(rel_path))
 
         # Serve other files (e.g., index.html, style.css, script.js) from the app directory
