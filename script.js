@@ -372,30 +372,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             showError("Preparing to seek...");
-            await new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => reject(new Error("Seek timeout")), 5000);
-                
-                function checkSeekable() {
-                    if (audioPlayer.seekable && 
-                        audioPlayer.seekable.length > 0 && 
-                        audioPlayer.seekable.end(0) > 0) {
-                        clearTimeout(timeoutId);
-                        resolve();
-                    } else {
-                        if (audioPlayer.readyState < 3) {
-                            audioPlayer.load();
-                        }
-                        setTimeout(checkSeekable, 100);
-                    }
-                }
-                
-                checkSeekable();
-            });
+            if (!audioPlayer.seekable || audioPlayer.seekable.length === 0) {
+                throw new Error("Audio is not seekable at this time");
+            }
 
             const seekableEnd = audioPlayer.seekable.end(0);
             if (newTime > seekableEnd) {
-                showError("That position is not loaded yet");
-                return;
+                throw new Error("That position is not loaded yet");
             }
 
             audioPlayer.currentTime = newTime;
@@ -407,9 +390,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         } catch (error) {
             console.error("Error while seeking:", error);
-            showError("Unable to seek to that position");
-            
-            progress.style.width = `${(audioPlayer.currentTime / audioPlayer.duration) * 100}%`;
+            showError(error.message || "Unable to seek to that position");
+
+            // Reset progress bar to the current time
+            const currentPercentage = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+            progress.style.width = `${currentPercentage}%`;
         }
     });
 
@@ -526,10 +511,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Update animateSoundBars function
     function animateSoundBars() {
+        const bars = document.querySelectorAll('.sound-bars span');
+        const decayRate = 0.05;
         if (!audioPlayer.paused && analyser && dataArray) {
             try {
                 analyser.getByteFrequencyData(dataArray);
-                const bars = document.querySelectorAll('.sound-bars span');
+                
                 
                 // Get frequency ranges for 12 unique bars (more granular)
                 const frequencyRanges = [
@@ -598,7 +585,15 @@ document.addEventListener("DOMContentLoaded", () => {
             } catch (error) {
                 // Silently handle errors
             }
+        } else {
+            // Gradually reduce bar heights to 0 when paused
+            bars.forEach(bar => {
+                const currentHeight = parseFloat(bar.style.height) || 0;
+                const newHeight = Math.max(0, currentHeight - decayRate * 50); // Gradual decay
+                bar.style.height = `${newHeight}px`;
+            });
         }
+
         requestAnimationFrame(animateSoundBars);
     }
 
